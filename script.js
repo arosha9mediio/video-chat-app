@@ -17,7 +17,7 @@ let localTrackState = {
     videoTrackMuted: false,
 };
 
-let remoteTracks = {};
+let remoteUsers = {}; // Store all remote users' tracks
 
 // Join button click event
 document.getElementById("join-btn").addEventListener("click", async () => {
@@ -64,6 +64,7 @@ document.getElementById("leave-btn").addEventListener("click", async () => {
         }
     }
     await client.leave();
+    remoteUsers = {}; // Clear remote users
     document.getElementById("footer").style.display = "none";
     document.getElementById("user-streams").innerHTML = "";
     document.getElementById("join-wrapper").style.display = "block";
@@ -71,7 +72,7 @@ document.getElementById("leave-btn").addEventListener("click", async () => {
 
 // Join streams and handle local video/audio
 let joinStreams = async () => {
-    client.on("user-published", handleUserJoined);
+    client.on("user-published", handleUserPublished);
     client.on("user-left", handleUserLeft);
 
     [config.uid, localTracks.audioTrack, localTracks.videoTrack] = await Promise.all([
@@ -80,39 +81,37 @@ let joinStreams = async () => {
         AgoraRTC.createCameraVideoTrack(),
     ]);
 
+    // Add local user video to the DOM
     let player = `
         <div class="video-containers" id="video-wrapper-${config.uid}">
-            <p class="user-uid">
-                <img class="volume-icon" id="volume-${config.uid}" src="./assets/volume-on.svg" />
-                ${config.uid}
-            </p>
+            <p class="user-uid">${config.uid}</p>
             <div class="video-player player" id="stream-${config.uid}"></div>
         </div>`;
     document.getElementById("user-streams").insertAdjacentHTML("beforeend", player);
     localTracks.videoTrack.play(`stream-${config.uid}`);
+
+    // Publish local tracks
     await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
 };
 
-// Handle new user joining
-let handleUserJoined = async (user, mediaType) => {
-    console.log("User joined:", user.uid, "Media type:", mediaType);
-    remoteTracks[user.uid] = user;
+// Handle remote user publishing
+let handleUserPublished = async (user, mediaType) => {
+    const id = user.uid;
+    remoteUsers[id] = user;
+
     await client.subscribe(user, mediaType);
 
     if (mediaType === "video") {
-        let player = document.getElementById(`video-wrapper-${user.uid}`);
-        if (player) player.remove();
-
-        player = `
-            <div class="video-containers" id="video-wrapper-${user.uid}">
-                <p class="user-uid">
-                    <img class="volume-icon" id="volume-${user.uid}" src="./assets/volume-on.svg" />
-                    ${user.uid}
-                </p>
-                <div class="video-player player" id="stream-${user.uid}"></div>
-            </div>`;
-        document.getElementById("user-streams").insertAdjacentHTML("beforeend", player);
-        user.videoTrack.play(`stream-${user.uid}`);
+        let player = document.getElementById(`video-wrapper-${id}`);
+        if (!player) {
+            player = `
+                <div class="video-containers" id="video-wrapper-${id}">
+                    <p class="user-uid">${id}</p>
+                    <div class="video-player player" id="stream-${id}"></div>
+                </div>`;
+            document.getElementById("user-streams").insertAdjacentHTML("beforeend", player);
+        }
+        user.videoTrack.play(`stream-${id}`);
     }
 
     if (mediaType === "audio") {
@@ -120,10 +119,10 @@ let handleUserJoined = async (user, mediaType) => {
     }
 };
 
-// Handle user leaving
+// Handle remote user leaving
 let handleUserLeft = (user) => {
-    console.log("User left:", user.uid);
-    delete remoteTracks[user.uid];
-    const player = document.getElementById(`video-wrapper-${user.uid}`);
+    const id = user.uid;
+    delete remoteUsers[id];
+    const player = document.getElementById(`video-wrapper-${id}`);
     if (player) player.remove();
 };
